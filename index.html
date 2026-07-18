@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VGN: Sentinel Field Vetting Terminal</title>
     
-    <!-- PWA Capabilities -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Sentinel Scanner">
@@ -13,13 +12,14 @@
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        :root { --vgn-blue: #1a237e; --vgn-green: #1b5e20; --vgn-gold: #d35400; }
+        :root { --vgn-blue: #1a237e; --vgn-green: #1b5e20; --vgn-gold: #d35400; --vgn-yellow: #f39c12; }
         body { font-family: sans-serif; background: #0f111a; color: white; text-align: center; margin: 0; padding: 20px; }
         .container { width: 100%; max-width: 500px; margin: 0 auto; }
         header { margin-bottom: 25px; border-bottom: 2px solid #1e2235; padding-bottom: 15px; }
         #reader { width: 100%; border-radius: 12px; overflow: hidden; border: 2px solid #2b304a; background: #000; }
         .panel { display: none; padding: 25px; border-radius: 15px; margin-top: 20px; text-align: center; box-sizing: border-box; }
         .granted { background: #1b5e20; border: 4px solid #4caf50; box-shadow: 0 0 20px rgba(76,175,80,0.4); }
+        .warning { background: #795548; border: 4px solid var(--vgn-yellow); box-shadow: 0 0 20px rgba(243,156,18,0.4); }
         .denied { background: #b71c1c; border: 4px solid #f44336; box-shadow: 0 0 20px rgba(244,67,54,0.4); }
         .btn-reset { background: white; color: black; padding: 14px 28px; border-radius: 8px; font-weight: bold; border: none; margin-top: 20px; cursor: pointer; font-size: 1rem; width: 100%; }
         .btn-action { background: var(--vgn-blue); color: white; border: none; padding: 14px 24px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; font-size: 1rem; letter-spacing: 0.5px; margin-bottom: 10px; }
@@ -40,8 +40,6 @@
         </div>
 
         <div id="reader"></div>
-        
-        <!-- Manual Kill Switch Button Element -->
         <button id="kill-button" class="btn-kill" onclick="disengageCameraManual()">🛑 DISENGAGE SCANNER FEED</button>
 
         <div id="result-panel" class="panel">
@@ -55,7 +53,6 @@
     <audio id="successSound" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3"></audio>
 
     <script>
-        // REPLACE WITH USER SPECIFIC REPO ROUTE IF STATUS.JSON ACTIVATED
         const REMOTE_CONFIG_URL = "https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/YOUR_REPO/main/status.json";
         const html5Qrcode = new Html5Qrcode("reader");
         let scanningState = false;
@@ -67,51 +64,37 @@
                     const onlineRules = await res.json();
                     localStorage.setItem('vgn_shared_rules', JSON.stringify(onlineRules));
                 }
-            } catch (e) { console.log("Using cached registry fallback parameters."); }
+            } catch (e) { console.log("Using cached fallback parameters."); }
         }
 
-      function engageCamera() {
-    if (scanningState) return;
-    document.getElementById('reader').style.display = 'block';
-    document.getElementById('result-panel').style.display = 'none';
-    document.getElementById('controls').style.display = 'none';
+        function engageCamera() {
+            if (scanningState) return;
+            document.getElementById('reader').style.display = 'block';
+            document.getElementById('result-panel').style.display = 'none';
+            document.getElementById('controls').style.display = 'none';
 
-    Html5Qrcode.getCameras().then(cameras => {
-        if (cameras.length > 0) {
-            scanningState = true;
-            document.getElementById('kill-button').style.display = 'block';
-            
-            const selectedCam = cameras.length > 1 ? cameras[1].id : cameras[0].id;
-            
-            html5Qrcode.start(
-                selectedCam, 
-                { 
-                    fps: 24,
-                    qrbox: { width: 230, height: 230 }, // Fixed, high-stability bounding frame
-                    // Force high-definition capture profiles to preserve high-density grid details
-                    videoConstraints: {
-                        width: { min: 640, ideal: 1280, max: 1920 },
-                        height: { min: 480, ideal: 720, max: 1080 },
-                        facingMode: "environment"
-                    }
-                }, 
-                processingPipeline
-            ).catch(err => {
-                console.error("HD profile rejected, engaging standard fallback alignment...", err);
-                // Fallback layout if the mobile hardware constraints refuse HD web hooks
-                html5Qrcode.start(selectedCam, { fps: 15, qrbox: 250 }, processingPipeline);
+            Html5Qrcode.getCameras().then(cameras => {
+                if (cameras.length > 0) {
+                    scanningState = true;
+                    document.getElementById('kill-button').style.display = 'block';
+                    const selectedCam = cameras.length > 1 ? cameras[1].id : cameras[0].id;
+                    
+                    // 🚀 PERFORMANCE FIX: Increased FPS to 24 and fine-tuned scanning boundary box for complex targets
+                    html5Qrcode.start(
+                        selectedCam, 
+                        { fps: 24, qrbox: (width, height) => { return { width: width * 0.7, height: width * 0.7 }; } }, 
+                        processingPipeline
+                    );
+                } else {
+                    alert("Operational Failure: Imaging hardware missing.");
+                    document.getElementById('controls').style.display = 'block';
+                }
+            }).catch(err => {
+                console.error(err);
+                document.getElementById('controls').style.display = 'block';
             });
-        } else {
-            alert("Operational Failure: Imaging hardware missing.");
-            document.getElementById('controls').style.display = 'block';
         }
-    }).catch(err => {
-        console.error(err);
-        document.getElementById('controls').style.display = 'block';
-    });
-}
 
-        // Manual Kill Button Action Handler
         function disengageCameraManual() {
             if (!scanningState) return;
             scanningState = false;
@@ -119,80 +102,68 @@
                 document.getElementById('reader').style.display = 'none';
                 document.getElementById('kill-button').style.display = 'none';
                 document.getElementById('controls').style.display = 'block';
-            }).catch(err => console.error("Error stopping camera feed:", err));
+            });
         }
 
         function processingPipeline(decodedText) {
-    scanningState = false;
-    document.getElementById('kill-button').style.display = 'none';
-    
-    html5Qrcode.stop().then(() => {
-        let passObject = null;
-        let cleanText = decodedText.trim();
-        
-        // Permissive Ingestion Engine with robust fallback mechanisms
-        try {
-            // Check if it looks like JSON structure
-            if (cleanText.startsWith('{') && cleanText.endsWith('}')) {
-                const parsed = JSON.parse(cleanText);
-                passObject = {
-                    id: (parsed.id || parsed.serial || parsed.passId || "").toString().trim(),
-                    owner: (parsed.owner || parsed.holder || parsed.name || "Card Bearer").trim(),
-                    type: (parsed.type || parsed.category || "decal").toLowerCase().trim()
-                };
-            }
-        } catch (e) {
-            console.log("JSON parse fallback engaged for dense structure.");
-        }
+            scanningState = false;
+            document.getElementById('kill-button').style.display = 'none';
+            
+            html5Qrcode.stop().then(() => {
+                let passObject = null;
+                
+                try {
+                    const parsed = JSON.parse(decodedText);
+                    passObject = {
+                        id: (parsed.id || parsed.serial || parsed.passId || "").toString().trim(),
+                        owner: (parsed.owner || parsed.holder || parsed.name || "Card Bearer").trim(),
+                        type: (parsed.type || parsed.category || "legacy").toLowerCase().trim()
+                    };
+                } catch (e) {
+                    passObject = { 
+                        id: decodedText.trim(), 
+                        owner: "Card Bearer", 
+                        type: "legacy"
+                    };
+                }
 
-        // Catch-all: If it failed parsing or wasn't JSON, treat the whole payload as the raw ID
-        if (!passObject || !passObject.id) {
-            passObject = { 
-                id: cleanText, 
-                owner: "Card Bearer", 
-                type: "decal"
-            };
-        }
+                if (!passObject.id) {
+                    evaluateVerdict("UNREADABLE DATA", "Origin: Unknown Form Structure\nReason: The parser could not locate an identity reference code.", "denied");
+                    return;
+                }
 
-        // Ultimate safety check: If text length is completely empty
-        if (!passObject.id) {
-            evaluateVerdict("UNREADABLE DATA", "Origin: Scanner Timeout\nReason: Failed to isolate grid timing markers.", "denied");
-            return;
-        }
+                const remoteRules = JSON.parse(localStorage.getItem('vgn_shared_rules') || '{}');
+                
+                if (remoteRules.blacklist && remoteRules.blacklist.includes(passObject.id)) {
+                    evaluateVerdict("GLOBAL SECURITY BLOCK", `Serial Ref: ${passObject.id}\nStatus: BLACKLISTED\nAction: Deny Entry.`, "denied");
+                    return;
+                }
 
-        // Remote Verification Rules
-        const remoteRules = JSON.parse(localStorage.getItem('vgn_shared_rules') || '{}');
-        
-        if (remoteRules.blacklist && remoteRules.blacklist.includes(passObject.id)) {
-            evaluateVerdict("GLOBAL SECURITY BLOCK", `Serial Ref: ${passObject.id}\nStatus: BLACKLISTED\nAction: Deny Entry.`, "denied");
-            return;
-        }
+                if (remoteRules.apps && remoteRules.apps[passObject.type] === "disabled") {
+                    evaluateVerdict("LAYOUT DEACTIVATED", `Type Detected: ${passObject.type.toUpperCase()}\nStatus: Disabled by Command Center.`, "denied");
+                    return;
+                }
 
-        if (remoteRules.apps && remoteRules.apps[passObject.type] === "disabled") {
-            evaluateVerdict("LAYOUT DEACTIVATED", `Type Detected: ${passObject.type.toUpperCase()}\nStatus: Disabled by Command Center.`, "denied");
-            return;
-        }
+                const database = JSON.parse(localStorage.getItem('vgn_master_registry') || '{}');
+                const matchedRecord = database[passObject.id];
 
-        // Database Registry Lookup
-        const database = JSON.parse(localStorage.getItem('vgn_master_registry') || '{}');
-        const matchedRecord = database[passObject.id];
-
-        if (matchedRecord) {
-            if (matchedRecord.status === 'REVOKED') {
-                evaluateVerdict("REVOKED CREDENTIAL", `Serial Ref: ${passObject.id}\nHolder: ${matchedRecord.holder}\nStatus: SUSPENDED BY HQ.`, "denied");
-                logActivity(passObject.id, matchedRecord.holder, "Access Denied (Revoked Pass)");
-            } else {
-                const displayDetails = `Serial Ref: ${passObject.id}\nHolder: ${matchedRecord.holder}\nParameters: ${matchedRecord.vehicle || 'None Assigned'}\nCategory: ${passObject.type.toUpperCase()}`;
-                evaluateVerdict("ACCESS GRANTED", displayDetails, "granted");
-                logActivity(passObject.id, matchedRecord.holder, `Access Allowed (${passObject.type.toUpperCase()})`);
-            }
-        } else {
-            // Instead of throwing an error, present the unverified result directly so you can see what it parsed
-            evaluateVerdict("UNREGISTERED PASS", `Serial Ref: ${passObject.id}\nHolder: ${passObject.owner}\nStatus: Token read successfully, but profile is missing from registry database.`, "denied");
-            logActivity(passObject.id, passObject.owner, "Access Denied (Unregistered Pass)");
+                if (matchedRecord) {
+                    if (matchedRecord.status === 'REVOKED') {
+                        evaluateVerdict("REVOKED CREDENTIAL", `Serial Ref: ${passObject.id}\nHolder: ${matchedRecord.holder}\nStatus: SUSPENDED BY HQ.`, "denied");
+                        logActivity(passObject.id, matchedRecord.holder, "Access Denied (Revoked Pass)");
+                    } else {
+                        const displayDetails = `Serial Ref: ${passObject.id}\nHolder: ${matchedRecord.holder}\nParameters: ${matchedRecord.vehicle || 'None Assigned'}\nCategory: ${passObject.type.toUpperCase()}`;
+                        evaluateVerdict("ACCESS GRANTED", displayDetails, "granted");
+                        logActivity(passObject.id, matchedRecord.holder, `Access Allowed (${passObject.type.toUpperCase()})`);
+                    }
+                } else {
+                    // ⚠️ LOGIC ALTERATION: Yellow Alert Warning instead of Red Error Threat
+                    const warningDetails = `Serial Ref: ${passObject.id}\nHolder: ${passObject.owner}\nStatus: Token payload successfully read, but profile record is not yet synced inside this device's storage.`;
+                    evaluateVerdict("UNVERIFIED CREDENTIAL", warningDetails, "warning");
+                    logActivity(passObject.id, passObject.owner, "Access Checked (Unverified Local Profile)");
+                }
+            });
         }
-    });
-}
 
         function evaluateVerdict(title, description, visualClass) {
             if (visualClass === "granted") {
@@ -204,7 +175,11 @@
             panel.style.display = 'block';
             panel.className = `panel ${visualClass}`;
             
-            document.getElementById('status-title').innerText = visualClass === 'granted' ? `✅ ${title}` : `❌ ${title}`;
+            let icon = "❌ ";
+            if (visualClass === 'granted') icon = "✅ ";
+            if (visualClass === 'warning') icon = "⚠️ ";
+            
+            document.getElementById('status-title').innerText = `${icon}${title}`;
             document.getElementById('visitor-details').innerText = description;
             document.getElementById('timestamp').innerText = `Processed: ${new Date().toLocaleTimeString()}`;
         }
@@ -219,22 +194,10 @@
             engageCamera();
         }
 
-       document.addEventListener('DOMContentLoaded', () => {
-    // 🛠️ Seed a temporary test profile for instant field vetting validation
-    const testRegistry = JSON.parse(localStorage.getItem('vgn_master_registry') || '{}');
-    
-    // Add your test serial profile here
-    testRegistry["05108756"] = {
-        holder: "Ibrahim (Test Profile)",
-        vehicle: "VGN Operational Unit 01",
-        status: "ACTIVE"
-    };
-    
-    localStorage.setItem('vgn_master_registry', JSON.stringify(testRegistry));
-
-    pullRemoteStatus();
-    engageCamera();
-});
+        document.addEventListener('DOMContentLoaded', () => {
+            pullRemoteStatus();
+            engageCamera();
+        });
     </script>
 </body>
 </html>
