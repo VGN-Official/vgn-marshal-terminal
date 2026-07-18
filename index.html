@@ -192,10 +192,22 @@
             engageCamera();
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            pullRemoteStatus();
-            engageCamera();
-        });
+       document.addEventListener('DOMContentLoaded', () => {
+    // 🛠️ Seed a temporary test profile for instant field vetting validation
+    const testRegistry = JSON.parse(localStorage.getItem('vgn_master_registry') || '{}');
+    
+    // Add your test serial profile here
+    testRegistry["05108756"] = {
+        holder: "Ibrahim (Test Profile)",
+        vehicle: "VGN Operational Unit 01",
+        status: "ACTIVE"
+    };
+    
+    localStorage.setItem('vgn_master_registry', JSON.stringify(testRegistry));
+
+    pullRemoteStatus();
+    engageCamera();
+});
     </script>
 </body>
 </html>
