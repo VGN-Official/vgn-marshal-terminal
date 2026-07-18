@@ -1,0 +1,16 @@
+{
+  "short_name": "Sentinel Scan",
+  "name": "VGN Sentinel Scan Desk Terminal",
+  "icons": [
+    {
+      "src": "https://img.icons8.com/fluent/512/shield.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "./index.html",
+  "background_color": "#0f111a",
+  "theme-color": "#1a237e",
+  "display": "standalone",
+  "orientation": "portrait"
+}

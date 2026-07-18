@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VGN: Sentinel Field Vetting Terminal</title>
+    
+    <!-- PWA Capabilities -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Sentinel Scanner">
+    <meta name="theme-color" content="#1a237e">
+
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        :root { --vgn-blue: #1a237e; --vgn-green: #1b5e20; --vgn-gold: #d35400; }
+        body { font-family: sans-serif; background: #0f111a; color: white; text-align: center; margin: 0; padding: 20px; }
+        .container { width: 100%; max-width: 500px; margin: 0 auto; }
+        header { margin-bottom: 25px; border-bottom: 2px solid #1e2235; padding-bottom: 15px; }
+        #reader { width: 100%; border-radius: 12px; overflow: hidden; border: 2px solid #2b304a; background: #000; }
+        .panel { display: none; padding: 25px; border-radius: 15px; margin-top: 20px; text-align: center; box-sizing: border-box; }
+        .granted { background: #1b5e20; border: 4px solid #4caf50; box-shadow: 0 0 20px rgba(76,175,80,0.4); }
+        .denied { background: #b71c1c; border: 4px solid #f44336; box-shadow: 0 0 20px rgba(244,67,54,0.4); }
+        .btn-reset { background: white; color: black; padding: 14px 28px; border-radius: 8px; font-weight: bold; border: none; margin-top: 20px; cursor: pointer; font-size: 1rem; width: 100%; }
+        .btn-action { background: var(--vgn-blue); color: white; border: none; padding: 14px 24px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; font-size: 1rem; letter-spacing: 0.5px; }
+        .status-msg { font-size: 1.3rem; font-weight: bold; margin: 0 0 10px 0; text-transform: uppercase; }
+        .details-msg { font-size: 1.1rem; line-height: 1.5; white-space: pre-line; margin: 0; text-align: left; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; }
+    </style>
+
+        <link rel="manifest" href="manifest.json">
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => console.log('Sentinel Service Worker Deployed Successfully'))
+                .catch(err => console.error('Worker registration failed:', err));
+        });
+    }
+</script>
+
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h2 style="color: #448aff; margin: 0 0 5px 0; letter-spacing: 1px;">🛡️ SENTINEL SCAN DESK</h2>
+            <p style="color: #6c7293; margin: 0; font-size: 0.85rem; font-weight: bold;">FIELD VETTING OPERATION ONLY</p>
+        </header>
+
+        <div id="controls" style="margin-bottom: 20px;">
+            <button class="btn-action" onclick="engageCamera()">INITIALIZE TERMINAL CAMERA</button>
+        </div>
+
+        <div id="reader"></div>
+
+        <div id="result-panel" class="panel">
+            <div class="status-msg" id="status-title"></div>
+            <p class="details-msg" id="visitor-details"></p>
+            <p id="timestamp" style="font-size: 0.75rem; color: #a1a5b7; margin: 15px 0 0 0; text-align: right;"></p>
+            <button class="btn-reset" onclick="resetScanner()">CLEAR & SCAN NEXT</button>
+        </div>
+    </div>
+
+    <!-- Audio Feedback Element -->
+    <audio id="successSound" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3"></audio>
+
+    <script>
+        // REPLACE WITH USER SPECIFIC REPO ROUTE IF STATUS.JSON ACTIVATED
+        const REMOTE_CONFIG_URL = "https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/YOUR_REPO/main/status.json";
+        const html5Qrcode = new Html5Qrcode("reader");
+        let scanningState = false;
+
+        async function pullRemoteStatus() {
+            try {
+                const res = await fetch(`${REMOTE_CONFIG_URL}?t=${Date.now()}`);
+                if (res.ok) {
+                    const onlineRules = await res.json();
+                    localStorage.setItem('vgn_shared_rules', JSON.stringify(onlineRules));
+                }
+            } catch (e) { console.log("Network status disconnect. Proceeding with offline database verification."); }
+        }
+
+        function engageCamera() {
+            if (scanningState) return;
+            document.getElementById('reader').style.display = 'block';
+            document.getElementById('result-panel').style.display = 'none';
+            document.getElementById('controls').style.display = 'none';
+
+            Html5Qrcode.getCameras().then(cameras => {
+                if (cameras.length > 0) {
+                    scanningState = true;
+                    // Auto-select back camera if present
+                    const selectedCam = cameras.length > 1 ? cameras[1].id : cameras[0].id;
+                    html5Qrcode.start(selectedCam, { fps: 15, qrbox: 260 }, processingPipeline);
+                } else {
+                    alert("Operational Failure: Imaging hardware missing.");
+                    document.getElementById('controls').style.display = 'block';
+                }
+            }).catch(err => {
+                console.error(err);
+                document.getElementById('controls').style.display = 'block';
+            });
+        }
+
+        function processingPipeline(decodedText) {
+            scanningState = false;
+            html5Qrcode.stop().then(() => {
+                let passObject = null;
+                
+                // 1. Poly-Parsing Layer: Safely digest text structures, loose JSON patterns, and legacy raw data strings
+                try {
+                    const parsed = JSON.parse(decodedText);
+                    passObject = {
+                        id: (parsed.id || parsed.serial || parsed.passId || "").toString().trim(),
+                        owner: (parsed.owner || parsed.holder || parsed.name || "Unknown Bearer").trim(),
+                        type: (parsed.type || parsed.category || "legacy").toLowerCase().trim(),
+                        app: parsed.app || ""
+                    };
+                } catch (e) {
+                    // Fallback parse logic for raw data string tags
+                    const rawString = decodedText.trim();
+                    passObject = { 
+                        id: rawString, 
+                        owner: "Legacy Bearer", 
+                        type: "legacy", 
+                        app: rawString.startsWith("VGN") ? "VGN-Sentinel" : "Unknown" 
+                    };
+                }
+
+                // 2. Ecosystem Verification Guardrail
+                if (passObject.app !== "VGN-Sentinel" && !passObject.id.startsWith("VGN")) {
+                    evaluateVerdict("INVALID SYSTEM TOKEN", "Origin: Unknown Ecosystem\nReason: Structural signature mismatch.", "denied");
+                    return;
+                }
+
+                const remoteRules = JSON.parse(localStorage.getItem('vgn_shared_rules') || '{}');
+                
+                // 3. Rule 1: Master Global Kill Switch Blacklist via status.json
+                if (remoteRules.blacklist && remoteRules.blacklist.includes(passObject.id)) {
+                    evaluateVerdict("GLOBAL SECURITY BLOCK", `Serial Ref: ${passObject.id}\nStatus: BLACKLISTED\nAction: Deny Entry & Intercept.`, "denied");
+                    return;
+                }
+
+                // 4. Rule 2: Layout Type Interdiction
+                if (remoteRules.apps && remoteRules.apps[passObject.type] === "disabled") {
+                    evaluateVerdict("LAYOUT DEACTIVATED", `Type Detected: ${passObject.type.toUpperCase()}\nStatus: Disabled by Command Center.`, "denied");
+                    return;
+                }
+
+                // 5. Rule 3: Database Verification Lookup (Matches LocalStorage written by your main App Form)
+                const database = JSON.parse(localStorage.getItem('vgn_master_registry') || '{}');
+                const matchedRecord = database[passObject.id];
+
+                if (matchedRecord) {
+                    if (matchedRecord.status === 'REVOKED') {
+                        evaluateVerdict("REVOKED CREDENTIAL", `Serial Ref: ${passObject.id}\nHolder: ${matchedRecord.holder}\nStatus: SUSPENDED BY HQ.`, "denied");
+                        logActivity(passObject.id, matchedRecord.holder, "Access Denied (Revoked Pass)");
+                    } else {
+                        const displayDetails = `Serial Ref: ${passObject.id}\nHolder: ${matchedRecord.holder}\nParameters: ${matchedRecord.vehicle || 'None Assigned'}\nCategory: ${passObject.type.toUpperCase()}`;
+                        evaluateVerdict("ACCESS GRANTED", displayDetails, "granted");
+                        logActivity(passObject.id, matchedRecord.holder, `Access Allowed (${passObject.type.toUpperCase()})`);
+                    }
+                } else {
+                    // Handles cases where the card QR string structure is structurally valid but missing from database registries
+                    const targetName = passObject.owner !== "Legacy Bearer" ? passObject.owner : "Unknown Record";
+                    evaluateVerdict("UNREGISTERED PASS", `Serial Ref: ${passObject.id}\nHolder: ${targetName}\nStatus: Missing Identity Profile Entry.`, "denied");
+                    logActivity(passObject.id, targetName, "Access Denied (Unregistered Pass)");
+                }
+            });
+        }
+
+        function evaluateVerdict(title, description, visualClass) {
+            if (visualClass === "granted") {
+                const sound = document.getElementById('successSound');
+                if(sound) sound.play().catch(()=>{});
+            }
+            document.getElementById('reader').style.display = 'none';
+            const panel = document.getElementById('result-panel');
+            panel.style.display = 'block';
+            panel.className = `panel ${visualClass}`;
+            
+            document.getElementById('status-title').innerText = visualClass === 'granted' ? `✅ ${title}` : `❌ ${title}`;
+            document.getElementById('visitor-details').innerText = description;
+            document.getElementById('timestamp').innerText = `Processed: ${new Date().toLocaleTimeString()}`;
+        }
+
+        function logActivity(id, holder, actionResult) {
+            // Writes directly to local storage logs so your registry app can read terminal timelines seamlessly
+            const logs = JSON.parse(localStorage.getItem('vgn_terminal_logs') || '[]');
+            logs.unshift({ id, holder, action: actionResult, timestamp: new Date().toLocaleString() });
+            localStorage.setItem('vgn_terminal_logs', JSON.stringify(logs));
+        }
+
+        function resetScanner() {
+            engageCamera();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            pullRemoteStatus();
+            engageCamera();
+        });
+    </script>
+</body>
+</html>

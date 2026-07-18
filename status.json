@@ -1,0 +1,12 @@
+{
+  "apps": {
+    "pvc": "enabled",
+    "decal": "enabled",
+    "guest": "enabled",
+    "legacy": "enabled"
+  },
+  "blacklist": [
+    "VGN-BAD-TOKEN-999",
+    "SUSPECT-FLAG-04"
+  ]
+}
