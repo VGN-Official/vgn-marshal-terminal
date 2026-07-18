@@ -22,22 +22,11 @@
         .granted { background: #1b5e20; border: 4px solid #4caf50; box-shadow: 0 0 20px rgba(76,175,80,0.4); }
         .denied { background: #b71c1c; border: 4px solid #f44336; box-shadow: 0 0 20px rgba(244,67,54,0.4); }
         .btn-reset { background: white; color: black; padding: 14px 28px; border-radius: 8px; font-weight: bold; border: none; margin-top: 20px; cursor: pointer; font-size: 1rem; width: 100%; }
-        .btn-action { background: var(--vgn-blue); color: white; border: none; padding: 14px 24px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; font-size: 1rem; letter-spacing: 0.5px; }
+        .btn-action { background: var(--vgn-blue); color: white; border: none; padding: 14px 24px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; font-size: 1rem; letter-spacing: 0.5px; margin-bottom: 10px; }
+        .btn-kill { background: #b71c1c; color: white; border: none; padding: 12px 24px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; font-size: 0.95rem; margin-top: 15px; display: none; }
         .status-msg { font-size: 1.3rem; font-weight: bold; margin: 0 0 10px 0; text-transform: uppercase; }
         .details-msg { font-size: 1.1rem; line-height: 1.5; white-space: pre-line; margin: 0; text-align: left; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; }
     </style>
-
-        <link rel="manifest" href="manifest.json">
-<script>
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('./sw.js')
-                .then(reg => console.log('Sentinel Service Worker Deployed Successfully'))
-                .catch(err => console.error('Worker registration failed:', err));
-        });
-    }
-</script>
-
 </head>
 <body>
     <div class="container">
@@ -46,11 +35,14 @@
             <p style="color: #6c7293; margin: 0; font-size: 0.85rem; font-weight: bold;">FIELD VETTING OPERATION ONLY</p>
         </header>
 
-        <div id="controls" style="margin-bottom: 20px;">
+        <div id="controls">
             <button class="btn-action" onclick="engageCamera()">INITIALIZE TERMINAL CAMERA</button>
         </div>
 
         <div id="reader"></div>
+        
+        <!-- Manual Kill Switch Button Element -->
+        <button id="kill-button" class="btn-kill" onclick="disengageCameraManual()">🛑 DISENGAGE SCANNER FEED</button>
 
         <div id="result-panel" class="panel">
             <div class="status-msg" id="status-title"></div>
@@ -60,7 +52,6 @@
         </div>
     </div>
 
-    <!-- Audio Feedback Element -->
     <audio id="successSound" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3"></audio>
 
     <script>
@@ -76,7 +67,7 @@
                     const onlineRules = await res.json();
                     localStorage.setItem('vgn_shared_rules', JSON.stringify(onlineRules));
                 }
-            } catch (e) { console.log("Network status disconnect. Proceeding with offline database verification."); }
+            } catch (e) { console.log("Using cached registry fallback parameters."); }
         }
 
         function engageCamera() {
@@ -88,7 +79,7 @@
             Html5Qrcode.getCameras().then(cameras => {
                 if (cameras.length > 0) {
                     scanningState = true;
-                    // Auto-select back camera if present
+                    document.getElementById('kill-button').style.display = 'block'; // Show manual kill switch
                     const selectedCam = cameras.length > 1 ? cameras[1].id : cameras[0].id;
                     html5Qrcode.start(selectedCam, { fps: 15, qrbox: 260 }, processingPipeline);
                 } else {
@@ -101,52 +92,61 @@
             });
         }
 
+        // Manual Kill Button Action Handler
+        function disengageCameraManual() {
+            if (!scanningState) return;
+            scanningState = false;
+            html5Qrcode.stop().then(() => {
+                document.getElementById('reader').style.display = 'none';
+                document.getElementById('kill-button').style.display = 'none';
+                document.getElementById('controls').style.display = 'block';
+            }).catch(err => console.error("Error stopping camera feed:", err));
+        }
+
         function processingPipeline(decodedText) {
             scanningState = false;
+            document.getElementById('kill-button').style.display = 'none'; // Hide kill switch during outcome view
+            
             html5Qrcode.stop().then(() => {
                 let passObject = null;
                 
-                // 1. Poly-Parsing Layer: Safely digest text structures, loose JSON patterns, and legacy raw data strings
+                // 1. Permissive Ingestion Engine
                 try {
                     const parsed = JSON.parse(decodedText);
                     passObject = {
                         id: (parsed.id || parsed.serial || parsed.passId || "").toString().trim(),
-                        owner: (parsed.owner || parsed.holder || parsed.name || "Unknown Bearer").trim(),
-                        type: (parsed.type || parsed.category || "legacy").toLowerCase().trim(),
-                        app: parsed.app || ""
+                        owner: (parsed.owner || parsed.holder || parsed.name || "Card Bearer").trim(),
+                        type: (parsed.type || parsed.category || "legacy").toLowerCase().trim()
                     };
                 } catch (e) {
-                    // Fallback parse logic for raw data string tags
-                    const rawString = decodedText.trim();
+                    // Handshake fallback for plain text codes (e.g. "VGN-1002" or "G-202")
                     passObject = { 
-                        id: rawString, 
-                        owner: "Legacy Bearer", 
-                        type: "legacy", 
-                        app: rawString.startsWith("VGN") ? "VGN-Sentinel" : "Unknown" 
+                        id: decodedText.trim(), 
+                        owner: "Card Bearer", 
+                        type: "legacy"
                     };
                 }
 
-                // 2. Ecosystem Verification Guardrail
-                if (passObject.app !== "VGN-Sentinel" && !passObject.id.startsWith("VGN")) {
-                    evaluateVerdict("INVALID SYSTEM TOKEN", "Origin: Unknown Ecosystem\nReason: Structural signature mismatch.", "denied");
+                // If parsing resulted in an empty string ID, completely block processing
+                if (!passObject.id) {
+                    evaluateVerdict("UNREADABLE DATA", "Origin: Unknown Form Structure\nReason: The parser could not locate an identity reference code.", "denied");
                     return;
                 }
 
+                // 2. Remote Access Control Rule Parsing Lookup
                 const remoteRules = JSON.parse(localStorage.getItem('vgn_shared_rules') || '{}');
                 
-                // 3. Rule 1: Master Global Kill Switch Blacklist via status.json
                 if (remoteRules.blacklist && remoteRules.blacklist.includes(passObject.id)) {
-                    evaluateVerdict("GLOBAL SECURITY BLOCK", `Serial Ref: ${passObject.id}\nStatus: BLACKLISTED\nAction: Deny Entry & Intercept.`, "denied");
+                    evaluateVerdict("GLOBAL SECURITY BLOCK", `Serial Ref: ${passObject.id}\nStatus: BLACKLISTED\nAction: Deny Entry.`, "denied");
                     return;
                 }
 
-                // 4. Rule 2: Layout Type Interdiction
                 if (remoteRules.apps && remoteRules.apps[passObject.type] === "disabled") {
                     evaluateVerdict("LAYOUT DEACTIVATED", `Type Detected: ${passObject.type.toUpperCase()}\nStatus: Disabled by Command Center.`, "denied");
                     return;
                 }
 
-                // 5. Rule 3: Database Verification Lookup (Matches LocalStorage written by your main App Form)
+                // 3. Main Data Layer Authentication Lookup
                 const database = JSON.parse(localStorage.getItem('vgn_master_registry') || '{}');
                 const matchedRecord = database[passObject.id];
 
@@ -160,10 +160,9 @@
                         logActivity(passObject.id, matchedRecord.holder, `Access Allowed (${passObject.type.toUpperCase()})`);
                     }
                 } else {
-                    // Handles cases where the card QR string structure is structurally valid but missing from database registries
-                    const targetName = passObject.owner !== "Legacy Bearer" ? passObject.owner : "Unknown Record";
-                    evaluateVerdict("UNREGISTERED PASS", `Serial Ref: ${passObject.id}\nHolder: ${targetName}\nStatus: Missing Identity Profile Entry.`, "denied");
-                    logActivity(passObject.id, targetName, "Access Denied (Unregistered Pass)");
+                    // Fallback Allow: If the QR payload structures exist but local DB lookup fails, show unverified warning instead of hard crash
+                    evaluateVerdict("UNREGISTERED PASS", `Serial Ref: ${passObject.id}\nHolder: ${passObject.owner}\nStatus: Identity profile missing from this terminal's registry database.`, "denied");
+                    logActivity(passObject.id, passObject.owner, "Access Denied (Unregistered Pass)");
                 }
             });
         }
@@ -184,7 +183,6 @@
         }
 
         function logActivity(id, holder, actionResult) {
-            // Writes directly to local storage logs so your registry app can read terminal timelines seamlessly
             const logs = JSON.parse(localStorage.getItem('vgn_terminal_logs') || '[]');
             logs.unshift({ id, holder, action: actionResult, timestamp: new Date().toLocaleString() });
             localStorage.setItem('vgn_terminal_logs', JSON.stringify(logs));
