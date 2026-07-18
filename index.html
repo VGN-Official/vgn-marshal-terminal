@@ -86,21 +86,19 @@
             html5Qrcode.start(
                 selectedCam, 
                 { 
-                    fps: 24, // Higher sample frequency to capture sharper frames
-                    qrbox: function(width, height) {
-                        // Keeps a compact, steady focus box optimized for dense patterns
-                        return { width: 230, height: 230 };
-                    },
-                    // Prevent ultra-high resolution streams that blur fine-line dense grids on mobile lenses
+                    fps: 24,
+                    qrbox: { width: 230, height: 230 }, // Fixed, high-stability bounding frame
+                    // Force high-definition capture profiles to preserve high-density grid details
                     videoConstraints: {
-                        width: { ideal: 640 },
-                        height: { ideal: 480 },
+                        width: { min: 640, ideal: 1280, max: 1920 },
+                        height: { min: 480, ideal: 720, max: 1080 },
                         facingMode: "environment"
                     }
                 }, 
                 processingPipeline
             ).catch(err => {
-                console.error("Camera standard init failed, trying safe fallback...", err);
+                console.error("HD profile rejected, engaging standard fallback alignment...", err);
+                // Fallback layout if the mobile hardware constraints refuse HD web hooks
                 html5Qrcode.start(selectedCam, { fps: 15, qrbox: 250 }, processingPipeline);
             });
         } else {
