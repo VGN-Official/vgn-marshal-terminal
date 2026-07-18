@@ -70,27 +70,43 @@
             } catch (e) { console.log("Using cached registry fallback parameters."); }
         }
 
-        function engageCamera() {
-            if (scanningState) return;
-            document.getElementById('reader').style.display = 'block';
-            document.getElementById('result-panel').style.display = 'none';
-            document.getElementById('controls').style.display = 'none';
+       function engageCamera() {
+    if (scanningState) return;
+    document.getElementById('reader').style.display = 'block';
+    document.getElementById('result-panel').style.display = 'none';
+    document.getElementById('controls').style.display = 'none';
 
-            Html5Qrcode.getCameras().then(cameras => {
-                if (cameras.length > 0) {
-                    scanningState = true;
-                    document.getElementById('kill-button').style.display = 'block'; // Show manual kill switch
-                    const selectedCam = cameras.length > 1 ? cameras[1].id : cameras[0].id;
-                    html5Qrcode.start(selectedCam, { fps: 15, qrbox: 260 }, processingPipeline);
-                } else {
-                    alert("Operational Failure: Imaging hardware missing.");
-                    document.getElementById('controls').style.display = 'block';
-                }
-            }).catch(err => {
-                console.error(err);
-                document.getElementById('controls').style.display = 'block';
+    Html5Qrcode.getCameras().then(cameras => {
+        if (cameras.length > 0) {
+            scanningState = true;
+            document.getElementById('kill-button').style.display = 'block';
+            
+            // Force selection of the environmental (back) camera
+            const selectedCam = cameras.length > 1 ? cameras[1].id : cameras[0].id;
+            
+            html5Qrcode.start(
+                selectedCam, 
+                { 
+                    fps: 20,                          // Increase processing speed
+                    qrbox: function(width, height) {  // Dynamic responsive scanning frame
+                        return { width: width * 0.75, height: height * 0.75 };
+                    },
+                    aspectRatio: 1.0                  // Force standard perfect square bounds
+                }, 
+                processingPipeline
+            ).catch(err => {
+                // Fallback attempt with loose video constraints if standard initialization is rejected
+                html5Qrcode.start(selectedCam, { fps: 15, qrbox: 280 }, processingPipeline);
             });
+        } else {
+            alert("Operational Failure: Imaging hardware missing.");
+            document.getElementById('controls').style.display = 'block';
         }
+    }).catch(err => {
+        console.error(err);
+        document.getElementById('controls').style.display = 'block';
+    });
+}
 
         // Manual Kill Button Action Handler
         function disengageCameraManual() {
