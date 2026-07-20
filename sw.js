@@ -2,6 +2,7 @@ const CACHE_NAME = 'sentinel-terminal-v1';
 const ASSETS = [
   './',
   './index.html', // Assumes your scanner HTML file is named index.html
+  './manifest.json',
   'https://unpkg.com/html5-qrcode'
 ];
 
