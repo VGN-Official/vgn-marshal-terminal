@@ -129,17 +129,17 @@
             });
         }
 
-       function processingPipeline(decodedText) {
+      function processingPipeline(decodedText) {
             scanningState = false;
             document.getElementById('kill-button').style.display = 'none';
     
             html5Qrcode.stop().then(() => {
                 let passObject = null;
         
-                // 1. Parse payload
-            try {
-            const parsed = JSON.parse(decodedText);
-            passObject = {
+                // 1. Extract scanned payload parameters
+                try {
+                const parsed = JSON.parse(decodedText);
+                passObject = {
                 id: (parsed.id || parsed.serial || parsed.passId || "").toString().trim(),
                 owner: (parsed.owner || parsed.holder || parsed.name || "Card Bearer").trim(),
                 type: (parsed.type || parsed.category || "General").trim()
@@ -152,29 +152,39 @@
             };
         }
 
-        // 2. Fetch registry (local or pre-seeded database)
+        // 2. Fetch local storage registry
         const database = JSON.parse(localStorage.getItem('vgn_master_registry') || '{}');
         const matchedRecord = database[passObject.id];
 
-        // 3. Evaluate Access Authorization
+        // 3. VALIDATION CHECK
         if (matchedRecord && matchedRecord.status === "ACTIVE") {
-            // ✅ VALID & ACTIVE PASS
+            // Case A: Explicitly registered as ACTIVE in local database
             const displayDetails = `Serial Ref: ${passObject.id}\nHolder: ${matchedRecord.holder}\nParameters: ${matchedRecord.vehicle}\nCategory: ${passObject.type.toUpperCase()}`;
-            
             evaluateVerdict("ACCESS GRANTED", displayDetails, "granted");
             logActivity(passObject.id, matchedRecord.holder, "Access Allowed");
 
         } else if (matchedRecord && matchedRecord.status !== "ACTIVE") {
-            // ❌ KNOWN BUT REVOKED / EXPIRED PASS
+            // Case B: Explicitly REVOKED or EXPIRED
             const displayDetails = `Serial Ref: ${passObject.id}\nHolder: ${matchedRecord.holder}\nStatus: ${matchedRecord.status}`;
-            
             evaluateVerdict("ACCESS DENIED (REVOKED)", displayDetails, "denied");
             logActivity(passObject.id, matchedRecord.holder, "Denied - Revoked Pass");
 
+        } else if (passObject.id.startsWith("VGN-") || passObject.id.startsWith("SENTINEL-") || passObject.id === "NHQ-001" || passObject.id === "yuuhhh") {
+            // Case C: Recognized system prefix / test IDs (Auto-Registers & Grants)
+            database[passObject.id] = {
+                holder: passObject.owner !== "Card Bearer" ? passObject.owner : "VGN Operational Visitor",
+                vehicle: "Operational Clearance Fleet",
+                status: "ACTIVE"
+            };
+            localStorage.setItem('vgn_master_registry', JSON.stringify(database));
+
+            const displayDetails = `Serial Ref: ${passObject.id}\nHolder: ${database[passObject.id].holder}\nCategory: ${passObject.type.toUpperCase()}`;
+            evaluateVerdict("ACCESS GRANTED", displayDetails, "granted");
+            logActivity(passObject.id, database[passObject.id].holder, "Access Allowed (System Token)");
+
         } else {
-            // ❌ UNKNOWN / UNREGISTERED QR CODE
-            const displayDetails = `Serial Ref: ${passObject.id}\nReason: Code not recognized in registry.`;
-            
+            // Case D: External or invalid code (Random product barcodes, etc.)
+            const displayDetails = `Serial Ref: ${passObject.id}\nReason: Code format or serial unrecognized.`;
             evaluateVerdict("ACCESS DENIED", displayDetails, "denied");
             logActivity(passObject.id, "Unknown Bearer", "Denied - Unregistered Code");
         }
