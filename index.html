@@ -11,7 +11,7 @@
     <meta name="theme-color" content="#1a237e">
 
     <link rel="manifest" href="./manifest.json">
-    <link rel="icon" type="image/jpeg" href="logo.jpg">
+    <link rel="icon" type="image/jpeg" href="logo.png">
     
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
@@ -29,6 +29,36 @@
         .status-msg { font-size: 1.3rem; font-weight: bold; margin: 0 0 10px 0; text-transform: uppercase; }
         .details-msg { font-size: 1.1rem; line-height: 1.5; white-space: pre-line; margin: 0; text-align: left; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; }
     </style>
+
+    <script>
+        let deferredPrompt;
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Prevent the default browser prompt banner from firing automatically
+            e.preventDefault();
+            deferredPrompt = e;
+    
+            // Create or display a custom installation link button element inside your UI
+            const installBtn = document.createElement('button');
+            installBtn.className = 'nav-btn';
+            installBtn.style.background = 'var(--vgn-gold)';
+            installBtn.innerText = '🖥️ INSTALL TERMINAL TO DESKTOP';
+    
+            // Prepend to your terminal navigation hub interface
+            document.querySelector('.terminal-nav').prepend(installBtn);
+    
+            installBtn.addEventListener('click', async () => {
+                if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                console.log(`User installation installation result option: ${outcome}`);
+                deferredPrompt = null;
+                installBtn.remove();
+            }
+        });
+    });
+</script>
+
 </head>
 <body>
     <div class="container">
@@ -99,53 +129,57 @@
             });
         }
 
-        function processingPipeline(decodedText) {
+       function processingPipeline(decodedText) {
             scanningState = false;
             document.getElementById('kill-button').style.display = 'none';
-            
+    
             html5Qrcode.stop().then(() => {
                 let passObject = null;
-                
-                try {
-                    const parsed = JSON.parse(decodedText);
-                    passObject = {
-                        id: (parsed.id || parsed.serial || parsed.passId || "").toString().trim(),
-                        owner: (parsed.owner || parsed.holder || parsed.name || "Card Bearer").trim(),
-                        type: (parsed.type || parsed.category || "General").trim()
-                    };
-                } catch (e) {
-                    passObject = { 
-                        id: decodedText.trim(), 
-                        owner: "Card Bearer", 
-                        type: "General"
-                    };
-                }
-
-                // Fallback generation for empty or poorly formatted tokens to prevent error crash
-                if (!passObject.id) {
-                    passObject.id = "GEN-" + Math.floor(100000 + Math.random() * 900000);
-                }
-
-                // 🚀 DYNAMIC PROVISIONER: Automatically records the scanned card if it is missing
-                const database = JSON.parse(localStorage.getItem('vgn_master_registry') || '{}');
-                
-                if (!database[passObject.id]) {
-                    database[passObject.id] = {
-                        holder: passObject.id === "yuuhhh" ? "Test Admin Profile" : (passObject.id === "NHQ-001" ? "HQ Field Agent" : "VGN Operational Visitor"),
-                        vehicle: "Operational Clearance Fleet",
-                        status: "ACTIVE"
-                    };
-                    localStorage.setItem('vgn_master_registry', JSON.stringify(database));
-                }
-
-                const matchedRecord = database[passObject.id];
-
-                // Render Clean Validated Panel Directly
-                const displayDetails = `Serial Ref: ${passObject.id}\nHolder: ${matchedRecord.holder}\nParameters: ${matchedRecord.vehicle}\nCategory: ${passObject.type.toUpperCase()}`;
-                evaluateVerdict("ACCESS GRANTED", displayDetails, "granted");
-                logActivity(passObject.id, matchedRecord.holder, "Access Allowed");
-            });
+        
+                // 1. Parse payload
+            try {
+            const parsed = JSON.parse(decodedText);
+            passObject = {
+                id: (parsed.id || parsed.serial || parsed.passId || "").toString().trim(),
+                owner: (parsed.owner || parsed.holder || parsed.name || "Card Bearer").trim(),
+                type: (parsed.type || parsed.category || "General").trim()
+            };
+        } catch (e) {
+            passObject = { 
+                id: decodedText.trim(), 
+                owner: "Card Bearer", 
+                type: "General"
+            };
         }
+
+        // 2. Fetch registry (local or pre-seeded database)
+        const database = JSON.parse(localStorage.getItem('vgn_master_registry') || '{}');
+        const matchedRecord = database[passObject.id];
+
+        // 3. Evaluate Access Authorization
+        if (matchedRecord && matchedRecord.status === "ACTIVE") {
+            // ✅ VALID & ACTIVE PASS
+            const displayDetails = `Serial Ref: ${passObject.id}\nHolder: ${matchedRecord.holder}\nParameters: ${matchedRecord.vehicle}\nCategory: ${passObject.type.toUpperCase()}`;
+            
+            evaluateVerdict("ACCESS GRANTED", displayDetails, "granted");
+            logActivity(passObject.id, matchedRecord.holder, "Access Allowed");
+
+        } else if (matchedRecord && matchedRecord.status !== "ACTIVE") {
+            // ❌ KNOWN BUT REVOKED / EXPIRED PASS
+            const displayDetails = `Serial Ref: ${passObject.id}\nHolder: ${matchedRecord.holder}\nStatus: ${matchedRecord.status}`;
+            
+            evaluateVerdict("ACCESS DENIED (REVOKED)", displayDetails, "denied");
+            logActivity(passObject.id, matchedRecord.holder, "Denied - Revoked Pass");
+
+        } else {
+            // ❌ UNKNOWN / UNREGISTERED QR CODE
+            const displayDetails = `Serial Ref: ${passObject.id}\nReason: Code not recognized in registry.`;
+            
+            evaluateVerdict("ACCESS DENIED", displayDetails, "denied");
+            logActivity(passObject.id, "Unknown Bearer", "Denied - Unregistered Code");
+        }
+    });
+}
 
         function evaluateVerdict(title, description, visualClass) {
             if (visualClass === "granted") {
