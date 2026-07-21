@@ -6,6 +6,7 @@
     <title>VGN: Sentinel Field Vetting Terminal</title>
     
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Sentinel Scanner">
     <meta name="theme-color" content="#1a237e">
@@ -33,26 +34,24 @@
   <script>
     let deferredPrompt;
 
-    window.addEventListener('beforeinstallprompt', (e) => {
-        // Prevent default mini-infobar from appearing
-        e.preventDefault();
-        deferredPrompt = e;
+   window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
 
-        // Prevent duplicate buttons if the event fires again
+    // Function to render button into UI
+    const mountButton = () => {
         if (document.getElementById('scanner-install-btn')) return;
 
-        // Create the install button element
+        const navContainer = document.querySelector('.terminal-nav') || document.body;
         const installBtn = document.createElement('button');
         installBtn.id = 'scanner-install-btn';
         installBtn.className = 'nav-btn';
         installBtn.style.background = 'var(--vgn-gold, #ffb300)';
+        installBtn.style.color = '#000';
+        installBtn.style.fontWeight = 'bold';
         installBtn.innerText = '🖥️ INSTALL SCANNER TO DESKTOP';
 
-        // Prepend to terminal navigation container
-        const navContainer = document.querySelector('.terminal-nav');
-        if (navContainer) {
-            navContainer.prepend(installBtn);
-        }
+        navContainer.prepend(installBtn);
 
         installBtn.addEventListener('click', async () => {
             if (deferredPrompt) {
@@ -63,14 +62,15 @@
                 installBtn.remove();
             }
         });
-    });
+    };
 
-    // Optionally remove button if already running as an installed PWA
-    window.addEventListener('appinstalled', () => {
-        console.log('Sentinel Scanner PWA installed successfully.');
-        const btn = document.getElementById('scanner-install-btn');
-        if (btn) btn.remove();
-    });
+    // If DOM is already loaded, mount immediately; otherwise wait for load
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', mountButton);
+    } else {
+        mountButton();
+    }
+});
 </script>
 
 </head>
