@@ -143,14 +143,14 @@
             });
         }
 
-    function processingPipeline(decodedText) {
+   function processingPipeline(decodedText) {
     scanningState = false;
     document.getElementById('kill-button').style.display = 'none';
     
     html5Qrcode.stop().then(() => {
         let passObject = null;
         
-        // 1. Parse scanned payload
+        // 1. Extract scanned payload parameters
         try {
             const parsed = JSON.parse(decodedText);
             passObject = {
@@ -166,25 +166,20 @@
             };
         }
 
-        // Clean fallback if empty string scanned
-        if (!passObject.id) {
-            passObject.id = "TOKEN-" + Math.floor(1000 + Math.random() * 9000);
-        }
-
-        // 2. Fetch local storage registry
+        // 2. Fetch local database for explicit revocation checks
         const database = JSON.parse(localStorage.getItem('vgn_master_registry') || '{}');
         const matchedRecord = database[passObject.id];
 
-        // 3. EVALUATE ACCESS
-
-        // Check if explicitly marked as REVOKED/EXPIRED in local database
+        // 3. EXPLICIT REVOCATION CHECK
         if (matchedRecord && matchedRecord.status === "REVOKED") {
-            const displayDetails = `Serial Ref: ${passObject.id}\nHolder: ${matchedRecord.holder}\nStatus: REVOKED`;
+            const displayDetails = `Serial Ref: ${passObject.id}\nHolder: ${matchedRecord.holder}\nStatus: REVOKED / SUSPENDED`;
+            
             evaluateVerdict("ACCESS DENIED (REVOKED)", displayDetails, "denied");
             logActivity(passObject.id, matchedRecord.holder, "Denied - Revoked Pass");
 
-        } else {
-            // 🚀 OPEN-ENDED MODE: Accepts ANY serial, digit, or pass format automatically!
+        // 4. VGN PREFIX VALIDATION CHECK (VGN-001 to infinity)
+        } else if (passObject.id.startsWith("VGN-")) {
+            // Register or resolve active entry in database
             if (!database[passObject.id]) {
                 database[passObject.id] = {
                     holder: passObject.owner !== "Card Bearer" ? passObject.owner : "VGN Operational Bearer",
@@ -199,6 +194,13 @@
             
             evaluateVerdict("ACCESS GRANTED", displayDetails, "granted");
             logActivity(passObject.id, activeRecord.holder, "Access Allowed");
+
+        // 5. DENY NON-VGN CODES
+        } else {
+            const displayDetails = `Serial Ref: ${passObject.id}\nReason: Invalid system security prefix.`;
+            
+            evaluateVerdict("ACCESS DENIED", displayDetails, "denied");
+            logActivity(passObject.id, "Unknown Bearer", "Denied - External/Invalid Code");
         }
     });
 }
