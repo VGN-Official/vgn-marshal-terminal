@@ -143,17 +143,17 @@
             });
         }
 
-      function processingPipeline(decodedText) {
-            scanningState = false;
-            document.getElementById('kill-button').style.display = 'none';
+    function processingPipeline(decodedText) {
+    scanningState = false;
+    document.getElementById('kill-button').style.display = 'none';
     
-            html5Qrcode.stop().then(() => {
-                let passObject = null;
+    html5Qrcode.stop().then(() => {
+        let passObject = null;
         
-                // 1. Extract scanned payload parameters
-                try {
-                const parsed = JSON.parse(decodedText);
-                passObject = {
+        // 1. Parse scanned payload
+        try {
+            const parsed = JSON.parse(decodedText);
+            passObject = {
                 id: (parsed.id || parsed.serial || parsed.passId || "").toString().trim(),
                 owner: (parsed.owner || parsed.holder || parsed.name || "Card Bearer").trim(),
                 type: (parsed.type || parsed.category || "General").trim()
@@ -166,41 +166,39 @@
             };
         }
 
+        // Clean fallback if empty string scanned
+        if (!passObject.id) {
+            passObject.id = "TOKEN-" + Math.floor(1000 + Math.random() * 9000);
+        }
+
         // 2. Fetch local storage registry
         const database = JSON.parse(localStorage.getItem('vgn_master_registry') || '{}');
         const matchedRecord = database[passObject.id];
 
-        // 3. VALIDATION CHECK
-        if (matchedRecord && matchedRecord.status === "ACTIVE") {
-            // Case A: Explicitly registered as ACTIVE in local database
-            const displayDetails = `Serial Ref: ${passObject.id}\nHolder: ${matchedRecord.holder}\nParameters: ${matchedRecord.vehicle}\nCategory: ${passObject.type.toUpperCase()}`;
-            evaluateVerdict("ACCESS GRANTED", displayDetails, "granted");
-            logActivity(passObject.id, matchedRecord.holder, "Access Allowed");
+        // 3. EVALUATE ACCESS
 
-        } else if (matchedRecord && matchedRecord.status !== "ACTIVE") {
-            // Case B: Explicitly REVOKED or EXPIRED
-            const displayDetails = `Serial Ref: ${passObject.id}\nHolder: ${matchedRecord.holder}\nStatus: ${matchedRecord.status}`;
+        // Check if explicitly marked as REVOKED/EXPIRED in local database
+        if (matchedRecord && matchedRecord.status === "REVOKED") {
+            const displayDetails = `Serial Ref: ${passObject.id}\nHolder: ${matchedRecord.holder}\nStatus: REVOKED`;
             evaluateVerdict("ACCESS DENIED (REVOKED)", displayDetails, "denied");
             logActivity(passObject.id, matchedRecord.holder, "Denied - Revoked Pass");
 
-        } else if (passObject.id.startsWith("VGN-") || passObject.id.startsWith("SENTINEL-") || passObject.id === "NHQ-001" || passObject.id === "yuuhhh") {
-            // Case C: Recognized system prefix / test IDs (Auto-Registers & Grants)
-            database[passObject.id] = {
-                holder: passObject.owner !== "Card Bearer" ? passObject.owner : "VGN Operational Visitor",
-                vehicle: "Operational Clearance Fleet",
-                status: "ACTIVE"
-            };
-            localStorage.setItem('vgn_master_registry', JSON.stringify(database));
-
-            const displayDetails = `Serial Ref: ${passObject.id}\nHolder: ${database[passObject.id].holder}\nCategory: ${passObject.type.toUpperCase()}`;
-            evaluateVerdict("ACCESS GRANTED", displayDetails, "granted");
-            logActivity(passObject.id, database[passObject.id].holder, "Access Allowed (System Token)");
-
         } else {
-            // Case D: External or invalid code (Random product barcodes, etc.)
-            const displayDetails = `Serial Ref: ${passObject.id}\nReason: Code format or serial unrecognized.`;
-            evaluateVerdict("ACCESS DENIED", displayDetails, "denied");
-            logActivity(passObject.id, "Unknown Bearer", "Denied - Unregistered Code");
+            // 🚀 OPEN-ENDED MODE: Accepts ANY serial, digit, or pass format automatically!
+            if (!database[passObject.id]) {
+                database[passObject.id] = {
+                    holder: passObject.owner !== "Card Bearer" ? passObject.owner : "VGN Operational Bearer",
+                    vehicle: "Operational Clearance Fleet",
+                    status: "ACTIVE"
+                };
+                localStorage.setItem('vgn_master_registry', JSON.stringify(database));
+            }
+
+            const activeRecord = database[passObject.id];
+            const displayDetails = `Serial Ref: ${passObject.id}\nHolder: ${activeRecord.holder}\nCategory: ${passObject.type.toUpperCase()}`;
+            
+            evaluateVerdict("ACCESS GRANTED", displayDetails, "granted");
+            logActivity(passObject.id, activeRecord.holder, "Access Allowed");
         }
     });
 }
