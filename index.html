@@ -30,32 +30,46 @@
         .details-msg { font-size: 1.1rem; line-height: 1.5; white-space: pre-line; margin: 0; text-align: left; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; }
     </style>
 
-    <script>
-        let deferredPrompt;
+  <script>
+    let deferredPrompt;
 
-        window.addEventListener('beforeinstallprompt', (e) => {
-            // Prevent the default browser prompt banner from firing automatically
-            e.preventDefault();
-            deferredPrompt = e;
-    
-            // Create or display a custom installation link button element inside your UI
-            const installBtn = document.createElement('button');
-            installBtn.className = 'nav-btn';
-            installBtn.style.background = 'var(--vgn-gold)';
-            installBtn.innerText = '🖥️ INSTALL TERMINAL TO DESKTOP';
-    
-            // Prepend to your terminal navigation hub interface
-            document.querySelector('.terminal-nav').prepend(installBtn);
-    
-            installBtn.addEventListener('click', async () => {
-                if (deferredPrompt) {
+    window.addEventListener('beforeinstallprompt', (e) => {
+        // Prevent default mini-infobar from appearing
+        e.preventDefault();
+        deferredPrompt = e;
+
+        // Prevent duplicate buttons if the event fires again
+        if (document.getElementById('scanner-install-btn')) return;
+
+        // Create the install button element
+        const installBtn = document.createElement('button');
+        installBtn.id = 'scanner-install-btn';
+        installBtn.className = 'nav-btn';
+        installBtn.style.background = 'var(--vgn-gold, #ffb300)';
+        installBtn.innerText = '🖥️ INSTALL SCANNER TO DESKTOP';
+
+        // Prepend to terminal navigation container
+        const navContainer = document.querySelector('.terminal-nav');
+        if (navContainer) {
+            navContainer.prepend(installBtn);
+        }
+
+        installBtn.addEventListener('click', async () => {
+            if (deferredPrompt) {
                 deferredPrompt.prompt();
                 const { outcome } = await deferredPrompt.userChoice;
-                console.log(`User installation installation result option: ${outcome}`);
+                console.log(`Scanner Install Outcome: ${outcome}`);
                 deferredPrompt = null;
                 installBtn.remove();
             }
         });
+    });
+
+    // Optionally remove button if already running as an installed PWA
+    window.addEventListener('appinstalled', () => {
+        console.log('Sentinel Scanner PWA installed successfully.');
+        const btn = document.getElementById('scanner-install-btn');
+        if (btn) btn.remove();
     });
 </script>
 

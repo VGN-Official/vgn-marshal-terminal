@@ -1,20 +1,19 @@
 {
+  "id": "/Sentinel-Gate/index.html",
   "short_name": "Sentinel Desk",
   "name": "VGN Sentinel Field Vetting Terminal",
   "icons": [
-
     {
       "src": "logo.png",
-      "type": "image/jpeg",
+      "type": "image/png",
       "sizes": "192x192",
       "purpose": "any"
     },
-
     {
       "src": "logo.png",
-      "type": "image/jpeg",
+      "type": "image/png",
       "sizes": "512x512",
-       "purpose": "any"
+      "purpose": "any"
     },
     {
       "src": "logo.png",
@@ -25,7 +24,7 @@
   ],
   "start_url": "./index.html",
   "background_color": "#0f111a",
-  "theme-color": "#1a237e",
+  "theme_color": "#1a237e",
   "display": "standalone",
   "orientation": "portrait"
 }
